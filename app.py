@@ -79,6 +79,22 @@ REGISTER_NAMA_FIELD = "nama_lengkap_parent"
 REGISTER_JENIS_KELAMIN_FIELD = "Jenis_Kelamin"
 REGISTER_PHONE_FIELD = "Nomor_WA_HP"
 
+# Form Register memakai select_one untuk Judul_Kegiatan (list_name: "judul_sementara").
+# Kobo menyimpan submission berupa KODE choice (mis. "Learning_gereja_ramah_anak"),
+# BUKAN teks labelnya. Mapping ini diambil dari sheet "choices" pada file XLSForm
+# Register yang diberikan, supaya dropdown & judul di PDF menampilkan label asli,
+# bukan kode mentahnya. Tambahkan baris baru di sini kalau daftar kegiatan bertambah.
+REGISTER_JUDUL_KEGIATAN_CHOICES: dict[str, str] = {
+    "Learning_gereja_ramah_anak": "ASCA Tiram makmur 1 Kecamatan Cilincing, Marunda, RW 02",
+}
+
+# Form Register memakai select_one untuk Area_Program (list_name: "lo6th05"),
+# juga tersimpan sebagai KODE. Mapping ini dipakai untuk menampilkan nama AP yang rapi
+# kalau dibutuhkan (label ditampilkan, pencocokan data tetap pakai kode aslinya).
+REGISTER_AREA_PROGRAM_CHOICES: dict[str, str] = {
+    "ADP_Bengkayang": "Project PHINLA",
+}
+
 
 # =========================================================
 # SECRETS (Area Program -> Asset UID Form Login / Form Register)
@@ -131,8 +147,21 @@ def get_ap_options() -> dict:
 # =========================================================
 def format_label(text: str) -> str:
     """Ganti underscore dengan spasi supaya enak dibaca (dipakai untuk
-    dropdown Judul Kegiatan dan judul di PDF)."""
+    dropdown Judul Kegiatan dan judul di PDF pada Form Login)."""
     return (text or "").replace("_", " ").strip()
+
+
+def resolve_register_judul_label(kode: str) -> str:
+    """Khusus Form Register: ubah KODE Judul_Kegiatan (choice XLSForm) jadi
+    label aslinya sesuai sheet 'choices'. Kalau kodenya tidak ada di
+    mapping (kegiatan baru yang belum ditambahkan), fallback ke
+    underscore->spasi seperti biasa supaya tetap enak dibaca."""
+    return REGISTER_JUDUL_KEGIATAN_CHOICES.get(kode, format_label(kode))
+
+
+def resolve_register_ap_label(kode: str) -> str:
+    """Khusus Form Register: ubah KODE Area_Program jadi label aslinya."""
+    return REGISTER_AREA_PROGRAM_CHOICES.get(kode, format_label(kode))
 
 
 # =========================================================
@@ -430,8 +459,9 @@ def build_register_pdf(judul_kegiatan: str, tanggal_kegiatan: str, rows: list[di
     )
     _, title_style, subtitle_style, meta_style, cell_style, cell_center_style, footer_style = _pdf_styles()
 
+    judul_label = resolve_register_judul_label(judul_kegiatan)
     story = _build_pdf_header(
-        judul_kegiatan, tanggal_kegiatan, "Daftar Hadir Peserta (Form Register)",
+        judul_label, tanggal_kegiatan, "Daftar Hadir Peserta (Form Register)",
         title_style, subtitle_style, meta_style,
     )
 
@@ -580,7 +610,9 @@ def run_register_flow(ap_config: dict, selected_ap: str) -> None:
         st.stop()
         return
 
-    selected_judul = st.selectbox("3️⃣ Pilih Judul Kegiatan", judul_list, format_func=format_label)
+    selected_judul = st.selectbox(
+        "3️⃣ Pilih Judul Kegiatan", judul_list, format_func=resolve_register_judul_label,
+    )
 
     matching_submissions = [
         s for s in submissions
@@ -638,7 +670,7 @@ def run_register_flow(ap_config: dict, selected_ap: str) -> None:
             pdf_bytes = build_register_pdf(selected_judul, selected_tanggal, rows_bersih, ap_config["token"])
 
         st.success("✅ PDF berhasil dibuat.")
-        nama_file = f"absensi_register_{format_label(selected_judul)}_{selected_tanggal}.pdf".replace(" ", "_")
+        nama_file = f"absensi_register_{resolve_register_judul_label(selected_judul)}_{selected_tanggal}.pdf".replace(" ", "_")
         st.download_button(
             "⬇️ Unduh PDF Laporan Absensi (Register)",
             data=pdf_bytes,
